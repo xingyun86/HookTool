@@ -56,12 +56,119 @@ class HookToolWindowHelper : public WindowHelper {
 		IDCC_MAXIMUM,
 		WM_NOTIFY_BUTTON_STATUS,
 	} ChildrenControls;
+	class DoubleBufferMemory {
+	public:
+		DoubleBufferMemory()
+		{
+			hGlobal = NULL;
+			pIStream = NULL;
+			hMemoryDC = NULL;
+			pIPicture = NULL;
+			hMemoryBMP = NULL;
+			hOldMemoryBMP = NULL;
+			memset(&rcMemoryDC, 0, sizeof(rcMemoryDC));
+		}
+		~DoubleBufferMemory()
+		{
+			ExitMemoryDC();
+			ExitMemoryDCEx();
+		}
+		void CalculateMemoryDC(HWND hWnd, DWORD dwResId, LPCSTR lpResType)
+		{
+			HDC hDC = GetDC(hWnd);
+			if (hMemoryDC != NULL)
+			{
+				ExitMemoryDC();
+			}
+			GetClientRect(hWnd, &rcMemoryDC);
+			InitMemoryDC(hDC, rcMemoryDC.right - rcMemoryDC.left, rcMemoryDC.bottom - rcMemoryDC.top);
+			if (hGlobal == NULL && pIStream == NULL && pIPicture == NULL)
+			{
+				HookToolWindowHelper::Inst()->GetResourceData(dwResId, lpResType, NULL, &hGlobal, &pIStream, &pIPicture);
+			}
+			HookToolWindowHelper::Inst()->DisplayPictureWithIPicture(hMemoryDC, pIPicture, &rcMemoryDC);
+			ReleaseDC(hWnd, hDC);
+		}
+		void CalculateMemoryDC(HWND hWnd, DWORD dwResId, LPCWSTR lpResType)
+		{
+			HDC hDC = GetDC(hWnd);
+			if (hMemoryDC != NULL)
+			{
+				ExitMemoryDC();
+			}
+			GetClientRect(hWnd, &rcMemoryDC);
+			InitMemoryDC(hDC, rcMemoryDC.right - rcMemoryDC.left, rcMemoryDC.bottom - rcMemoryDC.top);
+			if (hGlobal == NULL && pIStream == NULL && pIPicture == NULL)
+			{
+				HookToolWindowHelper::Inst()->GetResourceData(dwResId, lpResType, NULL, &hGlobal, &pIStream, &pIPicture);
+			}
+			HookToolWindowHelper::Inst()->DisplayPictureWithIPicture(hMemoryDC, pIPicture, &rcMemoryDC);
+			ReleaseDC(hWnd, hDC);
+		}
+	private:
+		void InitMemoryDC(HDC hDC, INT nWidth, INT nHeight)
+		{
+			hMemoryDC = CreateCompatibleDC(NULL);
+			hMemoryBMP = CreateCompatibleBitmap(hDC, nWidth, nHeight);
+			hOldMemoryBMP = (HBITMAP)SelectObject(hMemoryDC, hMemoryBMP);
+		}
+		void ExitMemoryDC()
+		{
+			memset(&rcMemoryDC, 0, sizeof(rcMemoryDC));
+			if (hOldMemoryBMP != NULL)
+			{
+				if (hMemoryDC != NULL)
+				{
+					SelectObject(hMemoryDC, hOldMemoryBMP);
+				}
+				hOldMemoryBMP = NULL;
+			}
+			if (hMemoryBMP)
+			{
+				DeleteObject(hMemoryBMP);
+				hMemoryBMP = NULL;
+			}
+			if (hMemoryDC != NULL)
+			{
+				DeleteDC(hMemoryDC);
+				hMemoryDC = NULL;
+			}
+		}
+		void ExitMemoryDCEx()
+		{
+			if (pIPicture != NULL)
+			{
+				pIPicture->Release();
+				pIPicture = NULL;
+			}
+			if (pIStream != NULL)
+			{
+				pIStream->Release();
+				pIStream = NULL;
+			}
+			if (hGlobal != NULL)
+			{
+				GlobalUnlock(hGlobal);
+				GlobalFree(hGlobal);
+				hGlobal = NULL;
+			}
+		}
+	public:
+		HDC hMemoryDC = NULL;
+		RECT rcMemoryDC = { 0 };
+	private:
+		HGLOBAL hGlobal = NULL;
+		IStream* pIStream = NULL;
+		HBITMAP hMemoryBMP = NULL;
+		IPicture* pIPicture = NULL;
+		HBITMAP hOldMemoryBMP = NULL;
+	};
 public:
 	bool bStartState = false;
 	ppsyqm::json m_config = nullptr;
 	boolean m_thread_status = true;
-	boolean m_editor_status = false;
-	int32_t m_current_page = (-1);
+	DoubleBufferMemory m_dbm_ui = {};
+	DoubleBufferMemory m_dbm_bg = {};
 	std::shared_ptr<std::thread> m_thread = nullptr;
 	std::vector<PROCESSENTRY32> m_vProcess = {};
 	std::vector<MODULEENTRY32> m_vModules = {};
@@ -428,6 +535,7 @@ public:
 		case WM_SIZE:
 		{
 			thiz->RelayoutControls(hWnd);
+			thiz->m_dbm_bg.CalculateMemoryDC(hWnd, 129, ("IMG_JPG"));
 			InvalidateRect(hWnd, NULL, TRUE);
 		}
 		break;
@@ -440,18 +548,11 @@ public:
 			{
 				RECT rcWnd = { 0 };
 				GetClientRect(hWnd, &rcWnd);
-
-				HBITMAP hOldBitmap = NULL;
-				HDC hMDC = CreateCompatibleDC(NULL);
-				HBITMAP hMBMP = CreateCompatibleBitmap(hDC, rcWnd.right, rcWnd.bottom);
-				hOldBitmap = (HBITMAP)SelectObject(hMDC, hMBMP);
-				thiz->DisplayPicture(hMDC, 129, ("IMG_JPG"), &rcWnd);
-				SetStretchBltMode(hDC, STRETCH_HALFTONE);
-				StretchBlt(hDC, rcWnd.left, rcWnd.top, rcWnd.right, rcWnd.bottom, hMDC, rcWnd.left, rcWnd.top, rcWnd.right, rcWnd.bottom, SRCCOPY);
-				SelectObject(hMDC, hOldBitmap);
-				DeleteObject(hMBMP);
-				DeleteDC(hMDC);
-				ReleaseDC(hWnd, hMDC);
+				if (thiz->m_dbm_bg.hMemoryDC != NULL)
+				{
+					SetStretchBltMode(hDC, STRETCH_HALFTONE);
+					StretchBlt(hDC, rcWnd.left, rcWnd.top, rcWnd.right - rcWnd.left, rcWnd.bottom - rcWnd.top, thiz->m_dbm_bg.hMemoryDC, 0, 0, rcWnd.right - rcWnd.left, rcWnd.bottom - rcWnd.top, SRCCOPY);
+				}
 
 				EndPaint(hWnd, &ps);
 			}
@@ -481,44 +582,6 @@ public:
 		return CreatePpsdlg(MainProc);
 	}
 public:
-	bool InsertCodeText(const std::string& code, const std::string& value, const std::string& path) {
-		m_task_locker.lock();
-		bool bRet = false;
-		auto itFind = m_code_text_map.find(code);
-		if (itFind == m_code_text_map.end())
-		{
-			m_code_text_map.emplace(code, std::vector<std::string>({value, path}));
-			bRet = true;
-		}
-		m_task_locker.unlock();
-		return bRet;
-	}
-	bool ModifyCodeText(const std::string& code, const std::string& value, const std::string& path) {
-		m_task_locker.lock();
-		bool bRet = false;
-		auto itFind = m_code_text_map.find(code);
-		if (itFind != m_code_text_map.end())
-		{
-			m_code_text_map.at(code).at(0).assign(value);
-			m_code_text_map.at(code).at(1).assign(path);
-			bRet = true;
-		}
-		m_task_locker.unlock();
-		return bRet;
-	}
-	bool DelelteCodeText(const std::string& code) {
-		m_task_locker.lock();
-		bool bRet = false;
-		auto itFind = m_code_text_map.find(code);
-		if (itFind != m_code_text_map.end())
-		{
-			m_code_text_map.erase(itFind);
-			bRet = true;
-		}
-		m_task_locker.unlock();
-		return bRet;
-	}
-public:
 	void LoadData(const std::string& jsonName)
 	{
 		m_task_locker.lock();
@@ -526,13 +589,7 @@ public:
 		{
 			ppsyqm::json json = ppsyqm::json::parse(FILE_READER(jsonName, std::ios::binary));
 			if (json["locale_path"].is_string()) {
-				m_locale_path = GCU2A(json["locale_path"].get<std::string>());
-			}
-			if (json["remote_path"].is_string()) {
-				m_remote_path = GCU2A(json["remote_path"].get<std::string>());
-			}
-			if (json["comm_port"].is_number_unsigned()) {
-				m_comm_port = json["comm_port"].get<uint16_t>();
+				std::cout << GCU2A(json["locale_path"].get<std::string>()) << std::endl;
 			}
 		}
 		catch (const std::exception& e)
@@ -545,9 +602,7 @@ public:
 	{
 		m_task_locker.lock();
 		ppsyqm::json json;
-		json["locale_path"] = GCA2U(m_locale_path);
-		json["remote_path"] = GCA2U(m_remote_path);
-		json["comm_port"] = m_comm_port;
+		json["locale_path"] = GCA2U("local_ath");
 		auto jsonData = json.dump(2);
 		FILE_WRITER(jsonData.data(), jsonData.size(), jsonName, std::ios::binary);
 		m_task_locker.unlock();
@@ -615,13 +670,7 @@ public:
 
 	std::string m_data_path = std::string(APP_DIR) + "\\data.json";
 	std::mutex m_task_locker;
-	std::string m_code_text = "";
 	std::deque<std::string> m_task_queue = {};
-
-	std::unordered_map<std::string, std::vector<std::string>> m_code_text_map = {};
-	std::string m_locale_path = std::string(APP_DIR) + "\\A";
-	std::string m_remote_path = std::string(APP_DIR) + "\\B";
-	uint16_t m_comm_port = 3;
 public:
 	static HookToolWindowHelper* Inst() {
 		static HookToolWindowHelper HookToolWindowHelperInstance;
