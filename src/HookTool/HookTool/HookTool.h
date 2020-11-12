@@ -105,6 +105,15 @@ class HookToolWindowHelper : public WindowHelper {
 			HookToolWindowHelper::Inst()->DisplayPictureWithIPicture(hMemoryDC, pIPicture, &rcMemoryDC);
 			ReleaseDC(hWnd, hDC);
 		}
+		void RenderWindow(HDC hDC, LPRECT lpRect)
+		{
+			if (hMemoryDC != NULL)
+			{
+				SetStretchBltMode(hDC, STRETCH_HALFTONE);
+				StretchBlt(hDC, lpRect->left, lpRect->top, lpRect->right - lpRect->left, lpRect->bottom - lpRect->top, hMemoryDC, 0, 0, lpRect->right - lpRect->left, lpRect->bottom - lpRect->top, SRCCOPY);
+				ExitMemoryDC();
+			}
+		}
 	private:
 		void InitMemoryDC(HDC hDC, INT nWidth, INT nHeight)
 		{
@@ -542,18 +551,13 @@ public:
 		case WM_PAINT:
 		{
 			HDC hDC = nullptr;
+			RECT rcWnd = { 0 };
 			PAINTSTRUCT ps = { 0 };
 			hDC = BeginPaint(hWnd, &ps);
 			if (hDC != nullptr)
 			{
-				RECT rcWnd = { 0 };
 				GetClientRect(hWnd, &rcWnd);
-				if (thiz->m_dbm_bg.hMemoryDC != NULL)
-				{
-					SetStretchBltMode(hDC, STRETCH_HALFTONE);
-					StretchBlt(hDC, rcWnd.left, rcWnd.top, rcWnd.right - rcWnd.left, rcWnd.bottom - rcWnd.top, thiz->m_dbm_bg.hMemoryDC, 0, 0, rcWnd.right - rcWnd.left, rcWnd.bottom - rcWnd.top, SRCCOPY);
-				}
-
+				thiz->m_dbm_bg.RenderWindow(hDC, &rcWnd);
 				EndPaint(hWnd, &ps);
 			}
 		}
