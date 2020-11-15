@@ -5,7 +5,9 @@
 
 #include <olectl.h>
 #pragma comment(lib,"oleaut32")
+#include <atlstr.h>
 #include <windows.h>
+#include <atlimage.h>
 #include <unordered_map>
 
 class WindowHelper {
@@ -152,6 +154,21 @@ public:
 		int xN;//有效行数
 		int yN;//有效列数
 		WNDPROC fnWndProc;
+	};
+	class StreamGlobal {
+	public:
+		StreamGlobal() {
+			pIStream = NULL;
+		}
+		~StreamGlobal() {
+			if (pIStream != NULL)
+			{
+				pIStream->Release();
+				pIStream = NULL;
+			}
+		}
+	public:
+		IStream* pIStream = NULL;
 	};
 public:
 	//Controls array
@@ -501,15 +518,10 @@ public:
 		}
 		return ((dwDataSize > 0) && (dwDataSize == dwNumberOfBytesWritten));
 	}
-	BOOL GetResourceData(DWORD dwResId, LPCSTR lpResType, LPSIZE lpSize = NULL, HGLOBAL* hGlobalMemory = NULL, IStream** ppIStream = NULL, IPicture** ppIPicture = NULL)
+	BOOL LoadResourceData(StreamGlobal& streamGlobal, DWORD dwResId, LPCSTR lpResType)
 	{
 		BOOL bResult = FALSE;
-		IStream* pIStream = NULL;
-		IPicture* pIPicture = NULL;
 		LPVOID lpStreamData = NULL;
-		HGLOBAL hStreamGlobal = NULL;
-		OLE_XSIZE_HIMETRIC hmWidth = 0;
-		OLE_YSIZE_HIMETRIC hmHeight = 0;
 		HMODULE hModule = NULL;
 		HRSRC hRsrc = NULL;
 		HGLOBAL hGlobal = NULL;
@@ -521,74 +533,22 @@ public:
 		hGlobal = ::LoadResource(hModule, hRsrc);
 		lpData = ::LockResource(hGlobal);
 		dwDataSize = ::SizeofResource(hModule, hRsrc);
-		if (hGlobal != NULL && lpData != NULL && dwDataSize > 0)
+		if (hGlobal != NULL)
 		{
-			if (hGlobalMemory != NULL)
+			lpStreamData = GlobalLock(GlobalAlloc(GMEM_MOVEABLE, dwDataSize));
+			if (lpStreamData != NULL)
 			{
-				if (*hGlobalMemory == NULL)
-				{
-					(*hGlobalMemory) = GlobalAlloc(GMEM_MOVEABLE, dwDataSize);
-				}
-				hStreamGlobal = (*hGlobalMemory);
+				memcpy(lpStreamData, lpData, dwDataSize);
+				bResult = SUCCEEDED(CreateStreamOnHGlobal(lpStreamData, TRUE, &streamGlobal.pIStream));
 			}
-			else
-			{
-				hStreamGlobal = GlobalAlloc(GMEM_MOVEABLE, dwDataSize);
-			}
-			lpStreamData = GlobalLock(hStreamGlobal);
-			if (hStreamGlobal != NULL && lpStreamData != NULL)
-			{
-				CopyMemory(lpStreamData, lpData, dwDataSize);
-				if (SUCCEEDED(CreateStreamOnHGlobal(hStreamGlobal, FALSE, &pIStream)))
-				{
-					if (SUCCEEDED(OleLoadPicture(pIStream, 0, FALSE, IID_IPicture, (LPVOID*)&(pIPicture))))
-					{
-						if (SUCCEEDED(pIPicture->get_Width(&hmWidth)) && SUCCEEDED(pIPicture->get_Height(&hmHeight)))
-						{
-							if (lpSize != NULL)
-							{
-								lpSize->cx = hmWidth;
-								lpSize->cy = hmHeight;
-								bResult = TRUE;
-							}
-						}
-						if (ppIPicture == NULL)
-						{
-							pIPicture->Release();
-						}
-						else
-						{
-							*ppIPicture = pIPicture;
-						}
-					}
-					if (ppIStream == NULL)
-					{
-						pIStream->Release();
-					}
-					else
-					{
-						*ppIStream = pIStream;
-					}
-					FreeResource(hGlobal);
-				}
-				if (hGlobalMemory == NULL)
-				{
-					GlobalUnlock(hStreamGlobal);
-					GlobalFree(hStreamGlobal);
-				}
-			}
+			FreeResource(hGlobal);
 		}
 		return bResult;
 	}
-	BOOL GetResourceData(DWORD dwResId, LPCWSTR lpResType, LPSIZE lpSize = NULL, HGLOBAL* hGlobalMemory = NULL, IStream** ppIStream = NULL, IPicture** ppIPicture = NULL)
+	BOOL LoadResourceData(StreamGlobal & streamGlobal, DWORD dwResId, LPCWSTR lpResType)
 	{
 		BOOL bResult = FALSE;
-		IStream* pIStream = NULL;
-		IPicture* pIPicture = NULL;
 		LPVOID lpStreamData = NULL;
-		HGLOBAL hStreamGlobal = NULL;
-		OLE_XSIZE_HIMETRIC hmWidth = 0;
-		OLE_YSIZE_HIMETRIC hmHeight = 0;
 		HMODULE hModule = NULL;
 		HRSRC hRsrc = NULL;
 		HGLOBAL hGlobal = NULL;
@@ -600,390 +560,19 @@ public:
 		hGlobal = ::LoadResource(hModule, hRsrc);
 		lpData = ::LockResource(hGlobal);
 		dwDataSize = ::SizeofResource(hModule, hRsrc);
-		if (hGlobal != NULL && lpData != NULL && dwDataSize > 0)
+		if (hGlobal != NULL)
 		{
-			if (hGlobalMemory != NULL)
+			lpStreamData = GlobalLock(GlobalAlloc(GMEM_MOVEABLE, dwDataSize));
+			if (lpStreamData != NULL)
 			{
-				if (*hGlobalMemory == NULL)
-				{
-					(*hGlobalMemory) = GlobalAlloc(GMEM_MOVEABLE, dwDataSize);
-				}
-				hStreamGlobal = (*hGlobalMemory);
+				memcpy(lpStreamData, lpData, dwDataSize);
+				bResult = SUCCEEDED(CreateStreamOnHGlobal(lpStreamData, TRUE, &streamGlobal.pIStream));
 			}
-			else
-			{
-				hStreamGlobal = GlobalAlloc(GMEM_MOVEABLE, dwDataSize);
-			}
-			lpStreamData = GlobalLock(hStreamGlobal);
-			if (hStreamGlobal != NULL && lpStreamData != NULL)
-			{
-				CopyMemory(lpStreamData, lpData, dwDataSize);
-				if (SUCCEEDED(CreateStreamOnHGlobal(hStreamGlobal, FALSE, &pIStream)))
-				{
-					if (SUCCEEDED(OleLoadPicture(pIStream, 0, FALSE, IID_IPicture, (LPVOID*)&(pIPicture))))
-					{
-						if (SUCCEEDED(pIPicture->get_Width(&hmWidth)) && SUCCEEDED(pIPicture->get_Height(&hmHeight)))
-						{
-							if (lpSize != NULL)
-							{
-								lpSize->cx = hmWidth;
-								lpSize->cy = hmHeight;
-								bResult = TRUE;
-							}
-						}
-						if (ppIPicture == NULL)
-						{
-							pIPicture->Release();
-						}
-						else
-						{
-							*ppIPicture = pIPicture;
-						}
-					}
-					if (ppIStream == NULL)
-					{
-						pIStream->Release();
-					}
-					else
-					{
-						*ppIStream = pIStream;
-					}
-					FreeResource(hGlobal);
-				}
-				if (hGlobalMemory == NULL)
-				{
-					GlobalUnlock(hStreamGlobal);
-					GlobalFree(hStreamGlobal);
-				}
-			}
+			FreeResource(hGlobal);
 		}
 		return bResult;
 	}
-	void DisplayPicture(HDC hDC, LPCSTR szImagePath, LPRECT lpRect = NULL)
-	{
-		DWORD dwFileSize = 0;
-		HGLOBAL hGlobal = NULL;
-		IStream* pIStream = NULL;
-		LPVOID lpFileData = NULL;
-		IPicture* pIPicture = NULL;
-		DWORD dwNumberOfBytesRead = 0;
-		OLE_XSIZE_HIMETRIC hmWidth = 0;
-		OLE_YSIZE_HIMETRIC hmHeight = 0;
-		HANDLE hFile = INVALID_HANDLE_VALUE;
-		hFile = CreateFileA(szImagePath, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-		if (hFile != INVALID_HANDLE_VALUE)
-		{
-			dwFileSize = GetFileSize(hFile, NULL);
-			if (dwFileSize > 0)
-			{
-				hGlobal = GlobalAlloc(GMEM_MOVEABLE, dwFileSize);
-				lpFileData = GlobalLock(hGlobal);
-				if (hGlobal != NULL && lpFileData != NULL)
-				{
-					ReadFile(hFile, lpFileData, dwFileSize, &dwNumberOfBytesRead, NULL);
-					if (dwFileSize > 0 && dwFileSize == dwNumberOfBytesRead)
-					{
-						if (SUCCEEDED(CreateStreamOnHGlobal(hGlobal, FALSE, &pIStream)))
-						{
-							if (SUCCEEDED(OleLoadPicture(pIStream, 0, FALSE, IID_IPicture, (LPVOID*)&(pIPicture))))
-							{
-								if (SUCCEEDED(pIPicture->get_Width(&hmWidth)) && SUCCEEDED(pIPicture->get_Height(&hmHeight)))
-								{
-									if (lpRect != NULL)
-									{
-										pIPicture->Render(hDC, lpRect->left, lpRect->top, lpRect->right - lpRect->left, lpRect->bottom - lpRect->top, 0, hmHeight, hmWidth, -hmHeight, NULL);//在指定的DC上绘出图片
-									}
-									else
-									{
-										pIPicture->Render(hDC, 0, 0, hmWidth, hmHeight, 0, hmHeight, hmWidth, -hmHeight, NULL);
-									}
-								}
-								pIPicture->Release();
-							}
-							pIStream->Release();
-						}
-					}
-					GlobalUnlock(hGlobal);
-					GlobalFree(hGlobal);
-				}
-			}
-			CloseHandle(hFile);
-		}
-	}
-	void DisplayPicture(HDC hDC, LPCWSTR szImagePath, LPRECT lpRect = NULL)
-	{
-		DWORD dwFileSize = 0;
-		HGLOBAL hGlobal = NULL;
-		IStream* pIStream = NULL;
-		LPVOID lpFileData = NULL;
-		IPicture* pIPicture = NULL;
-		DWORD dwNumberOfBytesRead = 0;
-		OLE_XSIZE_HIMETRIC hmWidth = 0;
-		OLE_YSIZE_HIMETRIC hmHeight = 0;
-		HANDLE hFile = INVALID_HANDLE_VALUE;
-		hFile = CreateFileW(szImagePath, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-		if (hFile != INVALID_HANDLE_VALUE)
-		{
-			dwFileSize = GetFileSize(hFile, NULL);
-			if (dwFileSize > 0)
-			{
-				hGlobal = GlobalAlloc(GMEM_MOVEABLE, dwFileSize);
-				lpFileData = GlobalLock(hGlobal);
-				if (hGlobal != NULL && lpFileData != NULL)
-				{
-					ReadFile(hFile, lpFileData, dwFileSize, &dwNumberOfBytesRead, NULL);
-					if (dwFileSize > 0 && dwFileSize == dwNumberOfBytesRead)
-					{
-						if (SUCCEEDED(CreateStreamOnHGlobal(hGlobal, FALSE, &pIStream)))
-						{
-							if (SUCCEEDED(OleLoadPicture(pIStream, 0, FALSE, IID_IPicture, (LPVOID*)&(pIPicture))))
-							{
-								if (SUCCEEDED(pIPicture->get_Width(&hmWidth)) && SUCCEEDED(pIPicture->get_Height(&hmHeight)))
-								{
-									if (lpRect != NULL)
-									{
-										pIPicture->Render(hDC, lpRect->left, lpRect->top, lpRect->right - lpRect->left, lpRect->bottom - lpRect->top, 0, hmHeight, hmWidth, -hmHeight, NULL);//在指定的DC上绘出图片
-									}
-									else
-									{
-										pIPicture->Render(hDC, 0, 0, hmWidth, hmHeight, 0, hmHeight, hmWidth, -hmHeight, NULL);
-									}
-								}
-								pIPicture->Release();
-							}
-							pIStream->Release();
-						}
-					}
-					GlobalUnlock(hGlobal);
-					GlobalFree(hGlobal);
-				}
-			}
-			CloseHandle(hFile);
-		}
-	}
-	void DisplayPicture(HDC hDC, DWORD dwResId, LPCSTR lpResType, LPRECT lpRect = NULL, HGLOBAL* hGlobalMemory = NULL)
-	{
-		IStream* pIStream = NULL;
-		IPicture* pIPicture = NULL;
-		LPVOID lpStreamData = NULL;
-		HGLOBAL hStreamGlobal = NULL;
-		OLE_XSIZE_HIMETRIC hmWidth = 0;
-		OLE_YSIZE_HIMETRIC hmHeight = 0;
-		HMODULE hModule = NULL;
-		HRSRC hRsrc = NULL;
-		HGLOBAL hGlobal = NULL;
-		LPVOID lpData = NULL;
-		DWORD dwDataSize = 0;
-		if (hGlobalMemory != NULL)
-		{
-			if ((*hGlobalMemory) == NULL)
-			{
-				hModule = ::GetModuleHandleA(NULL);
-				hRsrc = ::FindResourceA(hModule, MAKEINTRESOURCEA(dwResId), lpResType);
-				hGlobal = ::LoadResource(hModule, hRsrc);
-				lpData = ::LockResource(hGlobal);
-				dwDataSize = ::SizeofResource(hModule, hRsrc);
-				if (hGlobal != NULL && lpData != NULL && dwDataSize > 0)
-				{
-					(*hGlobalMemory) = GlobalAlloc(GMEM_MOVEABLE, dwDataSize);
-					hStreamGlobal = (*hGlobalMemory);
-					lpStreamData = GlobalLock(hStreamGlobal);
-					if (hStreamGlobal != NULL && lpStreamData != NULL)
-					{
-						CopyMemory(lpStreamData, lpData, dwDataSize);
-					}
-				}
-			}
-			else
-			{
-				hStreamGlobal = (*hGlobalMemory);
-			}
-		}
-		else
-		{
-			hModule = ::GetModuleHandleA(NULL);
-			hRsrc = ::FindResourceA(hModule, MAKEINTRESOURCEA(dwResId), lpResType);
-			hGlobal = ::LoadResource(hModule, hRsrc);
-			lpData = ::LockResource(hGlobal);
-			dwDataSize = ::SizeofResource(hModule, hRsrc);
-			if (hGlobal != NULL && lpData != NULL && dwDataSize > 0)
-			{
-				hStreamGlobal = GlobalAlloc(GMEM_MOVEABLE, dwDataSize);
-				lpStreamData = GlobalLock(hStreamGlobal);
-				if (hStreamGlobal != NULL && lpStreamData != NULL)
-				{
-					CopyMemory(lpStreamData, lpData, dwDataSize);
-				}
-			}
-		}
-		if (hStreamGlobal != NULL)
-		{
-			if (SUCCEEDED(CreateStreamOnHGlobal(hStreamGlobal, FALSE, &pIStream)))
-			{
-				if (SUCCEEDED(OleLoadPicture(pIStream, 0, FALSE, IID_IPicture, (LPVOID*)&(pIPicture))))
-				{
-					if (SUCCEEDED(pIPicture->get_Width(&hmWidth)) && SUCCEEDED(pIPicture->get_Height(&hmHeight)))
-					{
-						if (lpRect != NULL)
-						{
-							pIPicture->Render(hDC, lpRect->left, lpRect->top, lpRect->right - lpRect->left, lpRect->bottom - lpRect->top, 0, hmHeight, hmWidth, -hmHeight, NULL);//在指定的DC上绘出图片
-						}
-						else
-						{
-							pIPicture->Render(hDC, 0, 0, hmWidth, hmHeight, 0, hmHeight, hmWidth, -hmHeight, NULL);
-						}
-					}
-					pIPicture->Release();
-				}
-				pIStream->Release();
-				FreeResource(hGlobal);
-			}
-			if (hGlobalMemory == NULL)
-			{
-				GlobalUnlock(hStreamGlobal);
-				GlobalFree(hStreamGlobal);
-			}
-		}
-	}
-	void DisplayPicture(HDC hDC, DWORD dwResId, LPCWSTR lpResType, LPRECT lpRect = NULL, HGLOBAL* hGlobalMemory = NULL)
-	{
-		IStream* pIStream = NULL;
-		IPicture* pIPicture = NULL;
-		LPVOID lpStreamData = NULL;
-		HGLOBAL hStreamGlobal = NULL;
-		OLE_XSIZE_HIMETRIC hmWidth = 0;
-		OLE_YSIZE_HIMETRIC hmHeight = 0;
-		HMODULE hModule = NULL;
-		HRSRC hRsrc = NULL;
-		HGLOBAL hGlobal = NULL;
-		LPVOID lpData = NULL;
-		DWORD dwDataSize = 0;
-		if (hGlobalMemory != NULL)
-		{
-			if ((*hGlobalMemory) == NULL)
-			{
-				hModule = ::GetModuleHandleW(NULL);
-				hRsrc = ::FindResourceW(hModule, MAKEINTRESOURCEW(dwResId), lpResType);
-				hGlobal = ::LoadResource(hModule, hRsrc);
-				lpData = ::LockResource(hGlobal);
-				dwDataSize = ::SizeofResource(hModule, hRsrc);
-				if (hGlobal != NULL && lpData != NULL && dwDataSize > 0)
-				{
-					(*hGlobalMemory) = GlobalAlloc(GMEM_MOVEABLE, dwDataSize);
-					hStreamGlobal = (*hGlobalMemory);
-					lpStreamData = GlobalLock(hStreamGlobal);
-					if (hStreamGlobal != NULL && lpStreamData != NULL)
-					{
-						CopyMemory(lpStreamData, lpData, dwDataSize);
-					}
-				}
-			}
-			else
-			{
-				hStreamGlobal = (*hGlobalMemory);
-			}
-		}
-		else
-		{
-			hModule = ::GetModuleHandleA(NULL);
-			hRsrc = ::FindResourceW(hModule, MAKEINTRESOURCEW(dwResId), lpResType);
-			hGlobal = ::LoadResource(hModule, hRsrc);
-			lpData = ::LockResource(hGlobal);
-			dwDataSize = ::SizeofResource(hModule, hRsrc);
-			if (hGlobal != NULL && lpData != NULL && dwDataSize > 0)
-			{
-				hStreamGlobal = GlobalAlloc(GMEM_MOVEABLE, dwDataSize);
-				lpStreamData = GlobalLock(hStreamGlobal);
-				if (hStreamGlobal != NULL && lpStreamData != NULL)
-				{
-					CopyMemory(lpStreamData, lpData, dwDataSize);
-				}
-			}
-		}
-		if (hStreamGlobal != NULL)
-		{
-			if (SUCCEEDED(CreateStreamOnHGlobal(hStreamGlobal, FALSE, &pIStream)))
-			{
-				if (SUCCEEDED(OleLoadPicture(pIStream, 0, FALSE, IID_IPicture, (LPVOID*)&(pIPicture))))
-				{
-					if (SUCCEEDED(pIPicture->get_Width(&hmWidth)) && SUCCEEDED(pIPicture->get_Height(&hmHeight)))
-					{
-						if (lpRect != NULL)
-						{
-							pIPicture->Render(hDC, lpRect->left, lpRect->top, lpRect->right - lpRect->left, lpRect->bottom - lpRect->top, 0, hmHeight, hmWidth, -hmHeight, NULL);//在指定的DC上绘出图片
-						}
-						else
-						{
-							pIPicture->Render(hDC, 0, 0, hmWidth, hmHeight, 0, hmHeight, hmWidth, -hmHeight, NULL);
-						}
-					}
-					pIPicture->Release();
-				}
-				pIStream->Release();
-				FreeResource(hGlobal);
-			}
-			if (hGlobalMemory == NULL)
-			{
-				GlobalUnlock(hStreamGlobal);
-				GlobalFree(hStreamGlobal);
-			}
-		}
-	}
 
-	void DisplayPictureWithGlobal(HDC hDC, HGLOBAL hStreamGlobal, LPRECT lpRect = NULL)
-	{
-		IStream* pIStream = NULL;
-		IPicture* pIPicture = NULL;
-		LPVOID lpStreamData = NULL;
-		OLE_XSIZE_HIMETRIC hmWidth = 0;
-		OLE_YSIZE_HIMETRIC hmHeight = 0;
-		if (hStreamGlobal != NULL)
-		{
-			lpStreamData = GlobalLock(hStreamGlobal);
-			if (lpStreamData != NULL)
-			{
-				if (SUCCEEDED(CreateStreamOnHGlobal(hStreamGlobal, FALSE, &pIStream)))
-				{
-					if (SUCCEEDED(OleLoadPicture(pIStream, 0, FALSE, IID_IPicture, (LPVOID*)&(pIPicture))))
-					{
-						if (SUCCEEDED(pIPicture->get_Width(&hmWidth)) && SUCCEEDED(pIPicture->get_Height(&hmHeight)))
-						{
-							if (lpRect != NULL)
-							{
-								pIPicture->Render(hDC, lpRect->left, lpRect->top, lpRect->right - lpRect->left, lpRect->bottom - lpRect->top, 0, hmHeight, hmWidth, -hmHeight, NULL);//在指定的DC上绘出图片
-							}
-							else
-							{
-								pIPicture->Render(hDC, 0, 0, hmWidth, hmHeight, 0, hmHeight, hmWidth, -hmHeight, NULL);
-							}
-						}
-						pIPicture->Release();
-					}
-					pIStream->Release();
-				}
-			}
-		}
-	}
-	void DisplayPictureWithIPicture(HDC hDC, IPicture* pIPicture = NULL, LPRECT lpRect = NULL)
-	{
-		LPVOID lpStreamData = NULL;
-		OLE_XSIZE_HIMETRIC hmWidth = 0;
-		OLE_YSIZE_HIMETRIC hmHeight = 0;
-		if (pIPicture != NULL)
-		{
-			if (SUCCEEDED(pIPicture->get_Width(&hmWidth)) && SUCCEEDED(pIPicture->get_Height(&hmHeight)))
-			{
-				if (lpRect != NULL)
-				{
-					pIPicture->Render(hDC, lpRect->left, lpRect->top, lpRect->right - lpRect->left, lpRect->bottom - lpRect->top, 0, hmHeight, hmWidth, -hmHeight, NULL);//在指定的DC上绘出图片
-				}
-				else
-				{
-					pIPicture->Render(hDC, 0, 0, hmWidth, hmHeight, 0, hmHeight, hmWidth, -hmHeight, NULL);
-				}
-			}
-		}
-	}
 public:
 	static WindowHelper* Inst() {
 		static WindowHelper windowHelperInstance;

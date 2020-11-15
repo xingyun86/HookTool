@@ -56,128 +56,12 @@ class HookToolWindowHelper : public WindowHelper {
 		IDCC_MAXIMUM,
 		WM_NOTIFY_BUTTON_STATUS,
 	} ChildrenControls;
-	class DoubleBufferMemory {
-	public:
-		DoubleBufferMemory()
-		{
-			hGlobal = NULL;
-			pIStream = NULL;
-			hMemoryDC = NULL;
-			pIPicture = NULL;
-			hMemoryBMP = NULL;
-			hOldMemoryBMP = NULL;
-			memset(&rcMemoryDC, 0, sizeof(rcMemoryDC));
-		}
-		~DoubleBufferMemory()
-		{
-			ExitMemoryDC();
-			ExitMemoryDCEx();
-		}
-		void CalculateMemoryDC(HWND hWnd, DWORD dwResId, LPCSTR lpResType)
-		{
-			HDC hDC = GetDC(hWnd);
-			if (hMemoryDC != NULL)
-			{
-				ExitMemoryDC();
-			}
-			GetClientRect(hWnd, &rcMemoryDC);
-			InitMemoryDC(hDC, rcMemoryDC.right - rcMemoryDC.left, rcMemoryDC.bottom - rcMemoryDC.top);
-			if (hGlobal == NULL && pIStream == NULL && pIPicture == NULL)
-			{
-				HookToolWindowHelper::Inst()->GetResourceData(dwResId, lpResType, NULL, &hGlobal, &pIStream, &pIPicture);
-			}
-			HookToolWindowHelper::Inst()->DisplayPictureWithIPicture(hMemoryDC, pIPicture, &rcMemoryDC);
-			ReleaseDC(hWnd, hDC);
-		}
-		void CalculateMemoryDC(HWND hWnd, DWORD dwResId, LPCWSTR lpResType)
-		{
-			HDC hDC = GetDC(hWnd);
-			if (hMemoryDC != NULL)
-			{
-				ExitMemoryDC();
-			}
-			GetClientRect(hWnd, &rcMemoryDC);
-			InitMemoryDC(hDC, rcMemoryDC.right - rcMemoryDC.left, rcMemoryDC.bottom - rcMemoryDC.top);
-			if (hGlobal == NULL && pIStream == NULL && pIPicture == NULL)
-			{
-				HookToolWindowHelper::Inst()->GetResourceData(dwResId, lpResType, NULL, &hGlobal, &pIStream, &pIPicture);
-			}
-			HookToolWindowHelper::Inst()->DisplayPictureWithIPicture(hMemoryDC, pIPicture, &rcMemoryDC);
-			ReleaseDC(hWnd, hDC);
-		}
-		void RenderWindow(HDC hDC, LPRECT lpRect)
-		{
-			if (hMemoryDC != NULL)
-			{
-				SetStretchBltMode(hDC, STRETCH_HALFTONE);
-				StretchBlt(hDC, lpRect->left, lpRect->top, lpRect->right - lpRect->left, lpRect->bottom - lpRect->top, hMemoryDC, 0, 0, lpRect->right - lpRect->left, lpRect->bottom - lpRect->top, SRCCOPY);
-				ExitMemoryDC();
-			}
-		}
-	private:
-		void InitMemoryDC(HDC hDC, INT nWidth, INT nHeight)
-		{
-			hMemoryDC = CreateCompatibleDC(NULL);
-			hMemoryBMP = CreateCompatibleBitmap(hDC, nWidth, nHeight);
-			hOldMemoryBMP = (HBITMAP)SelectObject(hMemoryDC, hMemoryBMP);
-		}
-		void ExitMemoryDC()
-		{
-			memset(&rcMemoryDC, 0, sizeof(rcMemoryDC));
-			if (hOldMemoryBMP != NULL)
-			{
-				if (hMemoryDC != NULL)
-				{
-					SelectObject(hMemoryDC, hOldMemoryBMP);
-				}
-				hOldMemoryBMP = NULL;
-			}
-			if (hMemoryBMP)
-			{
-				DeleteObject(hMemoryBMP);
-				hMemoryBMP = NULL;
-			}
-			if (hMemoryDC != NULL)
-			{
-				DeleteDC(hMemoryDC);
-				hMemoryDC = NULL;
-			}
-		}
-		void ExitMemoryDCEx()
-		{
-			if (pIPicture != NULL)
-			{
-				pIPicture->Release();
-				pIPicture = NULL;
-			}
-			if (pIStream != NULL)
-			{
-				pIStream->Release();
-				pIStream = NULL;
-			}
-			if (hGlobal != NULL)
-			{
-				GlobalUnlock(hGlobal);
-				GlobalFree(hGlobal);
-				hGlobal = NULL;
-			}
-		}
-	public:
-		HDC hMemoryDC = NULL;
-		RECT rcMemoryDC = { 0 };
-	private:
-		HGLOBAL hGlobal = NULL;
-		IStream* pIStream = NULL;
-		HBITMAP hMemoryBMP = NULL;
-		IPicture* pIPicture = NULL;
-		HBITMAP hOldMemoryBMP = NULL;
-	};
 public:
 	bool bStartState = false;
 	ppsyqm::json m_config = nullptr;
 	boolean m_thread_status = true;
-	DoubleBufferMemory m_dbm_ui = {};
-	DoubleBufferMemory m_dbm_bg = {};
+	StreamGlobal m_stream_global = {};
+	Gdiplus::Bitmap * m_p_bitmap_memory = nullptr;
 	std::shared_ptr<std::thread> m_thread = nullptr;
 	std::vector<PROCESSENTRY32> m_vProcess = {};
 	std::vector<MODULEENTRY32> m_vModules = {};
@@ -544,20 +428,17 @@ public:
 		case WM_SIZE:
 		{
 			thiz->RelayoutControls(hWnd);
-			thiz->m_dbm_bg.CalculateMemoryDC(hWnd, 129, ("IMG_JPG"));
-			InvalidateRect(hWnd, NULL, TRUE);
+			thiz->RenderMemory(hWnd);
 		}
 		break;
 		case WM_PAINT:
 		{
 			HDC hDC = nullptr;
-			RECT rcWnd = { 0 };
 			PAINTSTRUCT ps = { 0 };
 			hDC = BeginPaint(hWnd, &ps);
 			if (hDC != nullptr)
 			{
-				GetClientRect(hWnd, &rcWnd);
-				thiz->m_dbm_bg.RenderWindow(hDC, &rcWnd);
+				thiz->RenderWindow(hWnd, hDC);
 				EndPaint(hWnd, &ps);
 			}
 		}
@@ -572,6 +453,55 @@ public:
 		}
 		return 0;
 	}
+	void RenderWindow(HWND hWnd, HDC hDC)
+	{
+		RECT rcWnd = { 0 };
+		GetClientRect(hWnd, &rcWnd);
+		Gdiplus::Graphics graphicsPhysics(hDC);
+		if (m_p_bitmap_memory != nullptr)
+		{
+			graphicsPhysics.DrawImage(m_p_bitmap_memory, 0, 0, rcWnd.right, rcWnd.bottom);
+			delete m_p_bitmap_memory;
+			m_p_bitmap_memory = nullptr;
+		}
+		graphicsPhysics.ReleaseHDC(hDC);
+	}
+	void RenderMemory(HWND hWnd)
+	{
+		RECT rcWnd = { 0 };
+		GetClientRect(hWnd, &rcWnd);
+		if (m_p_bitmap_memory != nullptr)
+		{
+			if ((m_p_bitmap_memory->GetWidth() != rcWnd.right) || (m_p_bitmap_memory->GetWidth() != rcWnd.bottom))
+			{
+				delete m_p_bitmap_memory;
+				m_p_bitmap_memory = nullptr;
+			}
+		}
+		if (m_p_bitmap_memory == nullptr)
+		{
+			m_p_bitmap_memory = new Gdiplus::Bitmap(rcWnd.right, rcWnd.bottom);
+		}
+		Gdiplus::Graphics graphicsMemory(m_p_bitmap_memory);
+		/*{
+			Gdiplus::FontFamily fontFamily(L"幼圆");
+			Gdiplus::Font font(&fontFamily, 12, Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+			Gdiplus::SolidBrush brush(Gdiplus::Color(255, 255, 0, 0));
+			Gdiplus::StringFormat stringformat = {};
+			stringformat.SetAlignment(Gdiplus::StringAlignmentCenter);
+			stringformat.SetLineAlignment(Gdiplus::StringAlignmentCenter);
+			graphicsMemory.FillRectangle(&brush, Gdiplus::Rect(0, 0, rcWnd.right, rcWnd.bottom));
+			graphicsMemory.DrawString(L"12345", -1, &font, Gdiplus::RectF(0, 0, rcWnd.right, rcWnd.bottom), &stringformat, &brush);
+		}*/
+		if (m_stream_global.pIStream == NULL)
+		{
+			LoadResourceData(m_stream_global, 129, "IMG_JPG");
+		}
+		Gdiplus::Image imgBg(m_stream_global.pIStream);
+		//Gdiplus::Image imgBg(L"D:/bg.jpg");
+		graphicsMemory.DrawImage(&imgBg, 0, 0, rcWnd.right, rcWnd.bottom);
+		InvalidateRect(hWnd, NULL, TRUE);
+	}
 	INT Run()
 	{
 		const struct log_arg largl[] = {
@@ -585,6 +515,7 @@ public:
 			n_rotatetime, LOG_VERBOSE, DEFAULT_LOG_LIMIT_SIZE * 5, largl, sizeof(largl) / sizeof(*largl));
 		return CreatePpsdlg(MainProc);
 	}
+	
 public:
 	void LoadData(const std::string& jsonName)
 	{
@@ -606,7 +537,7 @@ public:
 	{
 		m_task_locker.lock();
 		ppsyqm::json json;
-		json["locale_path"] = GCA2U("local_ath");
+		json["locale_path"] = GCA2U("local_path");
 		auto jsonData = json.dump(2);
 		FILE_WRITER(jsonData.data(), jsonData.size(), jsonName, std::ios::binary);
 		m_task_locker.unlock();
