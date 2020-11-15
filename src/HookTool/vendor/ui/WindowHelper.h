@@ -166,9 +166,15 @@ public:
 				pIStream->Release();
 				pIStream = NULL;
 			}
+			if (pImage != NULL)
+			{
+				delete pImage;
+				pImage = NULL;
+			}
 		}
 	public:
 		IStream* pIStream = NULL;
+		Gdiplus::Image* pImage = NULL;
 	};
 public:
 	//Controls array
@@ -539,13 +545,16 @@ public:
 			if (lpStreamData != NULL)
 			{
 				memcpy(lpStreamData, lpData, dwDataSize);
-				bResult = SUCCEEDED(CreateStreamOnHGlobal(lpStreamData, TRUE, &streamGlobal.pIStream));
+				if (SUCCEEDED(CreateStreamOnHGlobal(lpStreamData, TRUE, &streamGlobal.pIStream)))
+				{
+					bResult = ((streamGlobal.pImage = new Gdiplus::Image(streamGlobal.pIStream)) != NULL);
+				}
 			}
 			FreeResource(hGlobal);
 		}
 		return bResult;
 	}
-	BOOL LoadResourceData(StreamGlobal & streamGlobal, DWORD dwResId, LPCWSTR lpResType)
+	BOOL LoadResourceData(StreamGlobal& streamGlobal, DWORD dwResId, LPCWSTR lpResType)
 	{
 		BOOL bResult = FALSE;
 		LPVOID lpStreamData = NULL;
@@ -566,7 +575,10 @@ public:
 			if (lpStreamData != NULL)
 			{
 				memcpy(lpStreamData, lpData, dwDataSize);
-				bResult = SUCCEEDED(CreateStreamOnHGlobal(lpStreamData, TRUE, &streamGlobal.pIStream));
+				if (SUCCEEDED(CreateStreamOnHGlobal(lpStreamData, TRUE, &streamGlobal.pIStream)))
+				{
+					bResult = ((streamGlobal.pImage = new Gdiplus::Image(streamGlobal.pIStream)) != NULL);
+				}
 			}
 			FreeResource(hGlobal);
 		}

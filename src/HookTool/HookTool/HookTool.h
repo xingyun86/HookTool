@@ -60,7 +60,7 @@ public:
 	bool bStartState = false;
 	ppsyqm::json m_config = nullptr;
 	boolean m_thread_status = true;
-	StreamGlobal m_stream_global = {};
+	StreamGlobal m_stream_global_bg = {};
 	Gdiplus::Bitmap * m_p_bitmap_memory = nullptr;
 	std::shared_ptr<std::thread> m_thread = nullptr;
 	std::vector<PROCESSENTRY32> m_vProcess = {};
@@ -456,23 +456,30 @@ public:
 	void RenderWindow(HWND hWnd, HDC hDC)
 	{
 		RECT rcWnd = { 0 };
+		Gdiplus::Graphics* pGraphicsPhysics = NULL;
 		GetClientRect(hWnd, &rcWnd);
-		Gdiplus::Graphics graphicsPhysics(hDC);
-		if (m_p_bitmap_memory != nullptr)
+		pGraphicsPhysics = new Gdiplus::Graphics(hDC);
+		if (pGraphicsPhysics != NULL)
 		{
-			graphicsPhysics.DrawImage(m_p_bitmap_memory, 0, 0, rcWnd.right, rcWnd.bottom);
-			delete m_p_bitmap_memory;
-			m_p_bitmap_memory = nullptr;
+			if (m_p_bitmap_memory != nullptr)
+			{
+				pGraphicsPhysics->DrawImage(m_p_bitmap_memory, 0, 0, rcWnd.right, rcWnd.bottom);
+				delete m_p_bitmap_memory;
+				m_p_bitmap_memory = nullptr;
+			}
+			pGraphicsPhysics->ReleaseHDC(hDC);
+			delete pGraphicsPhysics;
 		}
-		graphicsPhysics.ReleaseHDC(hDC);
 	}
 	void RenderMemory(HWND hWnd)
 	{
 		RECT rcWnd = { 0 };
+		Gdiplus::Graphics* pGraphicsMemory = NULL;
 		GetClientRect(hWnd, &rcWnd);
 		if (m_p_bitmap_memory != nullptr)
 		{
-			if ((m_p_bitmap_memory->GetWidth() != rcWnd.right) || (m_p_bitmap_memory->GetWidth() != rcWnd.bottom))
+			if ((m_p_bitmap_memory->GetWidth() != rcWnd.right) 
+				|| (m_p_bitmap_memory->GetWidth() != rcWnd.bottom))
 			{
 				delete m_p_bitmap_memory;
 				m_p_bitmap_memory = nullptr;
@@ -482,25 +489,34 @@ public:
 		{
 			m_p_bitmap_memory = new Gdiplus::Bitmap(rcWnd.right, rcWnd.bottom);
 		}
-		Gdiplus::Graphics graphicsMemory(m_p_bitmap_memory);
-		/*{
-			Gdiplus::FontFamily fontFamily(L"幼圆");
-			Gdiplus::Font font(&fontFamily, 12, Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
-			Gdiplus::SolidBrush brush(Gdiplus::Color(255, 255, 0, 0));
-			Gdiplus::StringFormat stringformat = {};
-			stringformat.SetAlignment(Gdiplus::StringAlignmentCenter);
-			stringformat.SetLineAlignment(Gdiplus::StringAlignmentCenter);
-			graphicsMemory.FillRectangle(&brush, Gdiplus::Rect(0, 0, rcWnd.right, rcWnd.bottom));
-			graphicsMemory.DrawString(L"12345", -1, &font, Gdiplus::RectF(0, 0, rcWnd.right, rcWnd.bottom), &stringformat, &brush);
-		}*/
-		if (m_stream_global.pIStream == NULL)
+		if (m_p_bitmap_memory != nullptr)
 		{
-			LoadResourceData(m_stream_global, 129, "IMG_JPG");
+			pGraphicsMemory = new Gdiplus::Graphics(m_p_bitmap_memory);
+			if (pGraphicsMemory != NULL)
+			{
+				/*{
+				Gdiplus::FontFamily fontFamily(L"幼圆");
+				Gdiplus::Font font(&fontFamily, 12, Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+				Gdiplus::SolidBrush brush(Gdiplus::Color(255, 255, 0, 0));
+				Gdiplus::StringFormat stringformat = {};
+				stringformat.SetAlignment(Gdiplus::StringAlignmentCenter);
+				stringformat.SetLineAlignment(Gdiplus::StringAlignmentCenter);
+				graphicsMemory.FillRectangle(&brush, Gdiplus::Rect(0, 0, rcWnd.right, rcWnd.bottom));
+				graphicsMemory.DrawString(L"12345", -1, &font, Gdiplus::RectF(0, 0, rcWnd.right, rcWnd.bottom), &stringformat, &brush);
+			}*/
+				if (m_stream_global_bg.pImage == NULL)
+				{
+					LoadResourceData(m_stream_global_bg, 129, "IMG_JPG");
+				}
+				if (m_stream_global_bg.pImage != NULL)
+				{
+					pGraphicsMemory->DrawImage(m_stream_global_bg.pImage, 0, 0, rcWnd.right, rcWnd.bottom);
+				}
+				delete pGraphicsMemory;
+				pGraphicsMemory = nullptr;
+				InvalidateRect(hWnd, NULL, TRUE);
+			}
 		}
-		Gdiplus::Image imgBg(m_stream_global.pIStream);
-		//Gdiplus::Image imgBg(L"D:/bg.jpg");
-		graphicsMemory.DrawImage(&imgBg, 0, 0, rcWnd.right, rcWnd.bottom);
-		InvalidateRect(hWnd, NULL, TRUE);
 	}
 	INT Run()
 	{
