@@ -5,9 +5,7 @@
 
 #include <olectl.h>
 #pragma comment(lib,"oleaut32")
-#include <atlstr.h>
 #include <windows.h>
-#include <atlimage.h>
 #include <unordered_map>
 
 class WindowHelper {
